@@ -47,7 +47,7 @@ source "qemu" "gitlab-runner" {
   # Since we don't want to use cloud-init for *runtime* config, strictly speaking,
   # it's okay to use it for *build time* access if we clean it up or if the image requires it.
   # However, with qemu builder and cloud images, we can use cd_files to provide meta-data and user-data.
-  cd_files = ["./user-data", "./meta-data"]
+  cd_files = ["${path.root}/user-data", "${path.root}/meta-data"]
   cd_label = "cidata"
 }
 
