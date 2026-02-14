@@ -1,0 +1,44 @@
+variables:
+  PACKER_CACHE_DIR: "$CI_PROJECT_DIR/.packer_cache"
+
+stages:
+  - build
+  - ship
+
+build-image:
+  stage: build
+  image:
+    name: hashicorp/packer:latest
+    entrypoint:
+      - "/usr/bin/env"
+  before_script:
+    - packer init packer/template.pkr.hcl
+    - apk add --no-cache ansible py3-pip git
+    - ansible-galaxy collection install community.general
+  script:
+    - packer validate packer/template.pkr.hcl
+    - packer build packer/template.pkr.hcl
+  artifacts:
+    paths:
+      - output/gitlab-runner-disk.qcow2
+    expire_in: 1 day
+  # Use tags to ensure this runs on a runner with KVM capability if needed,
+  # mostly for speed, but QEMU can run without KVM (albeit slowly).
+  tags:
+    - kvm
+
+ship-container-disk:
+  stage: ship
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    LATEST_TAG: $CI_REGISTRY_IMAGE:latest
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $IMAGE_TAG -t $LATEST_TAG .
+    - docker push $IMAGE_TAG
+    - docker push $LATEST_TAG
+  dependencies:
+    - build-image

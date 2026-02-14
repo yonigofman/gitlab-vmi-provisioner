@@ -1,0 +1,20 @@
+---
+- name: Bake GitLab Runner Image
+  hosts: all
+  become: true
+  tasks:
+    - name: Run common setup
+      include_role:
+        name: common
+
+    - name: Install and configure Docker
+      include_role:
+        name: docker
+
+    - name: Install and configure GitLab Runner
+      include_role:
+        name: gitlab-runner
+
+    - name: Setup config reloader
+      include_role:
+        name: reloader

@@ -1,0 +1,38 @@
+---
+- name: Install required packages
+  yum:
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+    state: present
+
+- name: Add Docker repo
+  get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+
+- name: Install Docker
+  yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: yes
+    state: started
+
+- name: Add user to docker group
+  user:
+    name: gitlab-runner # This user will be created in the gitlab-runner role, making sure order assumes this or we create it here.
+    groups: docker
+    append: yes
+  # Note: The gitlab-runner user might not exist yet if roles are run in order.
+  # It's better to ensure the user exists or run this task after the user creation.
+  # For now, I'll move user creation to common or handle it in gitlab-runner and ensure docker group is added there.
+  # Actually, simpler: let's create the user in common or just ignore this specific task here and do it in gitlab-runner role.
+  when: false

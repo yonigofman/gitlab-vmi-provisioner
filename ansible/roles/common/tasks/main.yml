@@ -1,0 +1,21 @@
+---
+- name: Install basic tools
+  yum:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+    state: present
+
+- name: Ensure /etc/gitlab-runner directory exists
+  file:
+    path: /etc/gitlab-runner
+    state: directory
+    mode: "0755"
+
+- name: Add config-fs to /etc/fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "config-fs /etc/gitlab-runner virtiofs defaults,_netdev 0 0"
+    state: present

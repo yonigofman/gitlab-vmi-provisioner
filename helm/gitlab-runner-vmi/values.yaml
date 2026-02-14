@@ -1,0 +1,23 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/yonigofman/gitlab-vmi-provisioner
+  tag: latest
+  pullPolicy: IfNotPresent
+
+runner:
+  url: "https://gitlab.com/"
+  token: "REPLACE_ME"
+  executor: "docker"
+  dockerImage: "alpine:latest"
+
+resources:
+  requests:
+    cpu: "2"
+    memory: "2Gi"
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+
+vm:
+  terminationGracePeriodSeconds: 30

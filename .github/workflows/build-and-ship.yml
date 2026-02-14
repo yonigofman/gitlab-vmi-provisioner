@@ -1,0 +1,101 @@
+name: Build and Ship VMI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  packages: write
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: "latest"
+
+      - name: Initialize Packer
+        run: packer init packer/template.pkr.hcl
+
+      - name: Validate Packer Template
+        run: packer validate -var "accelerator=tcg" packer/template.pkr.hcl
+
+      - name: Build QCOW2 Image
+        run: packer build -var "accelerator=tcg" packer/template.pkr.hcl
+        env:
+          PACKER_LOG: 1
+
+      - name: Upload QCOW2 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-runner-disk
+          path: output/gitlab-runner-disk.qcow2
+          retention-days: 1
+
+  ship:
+    needs: bake
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download QCOW2 Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gitlab-runner-disk
+          path: output/
+
+      - name: Fix Artifact Path
+        # The artifact download might put it in a subdirectory or structure we need to match Dockerfile expectations.
+        # Dockerfile expects: COPY output/gitlab-runner-disk.qcow2 /disk/disk.qcow2
+        # If download-artifact puts it in 'output/', then we are good.
+        run: ls -R output/
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

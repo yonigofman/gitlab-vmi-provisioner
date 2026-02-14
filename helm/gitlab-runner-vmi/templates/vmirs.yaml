@@ -1,0 +1,66 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceReplicaSet
+metadata:
+  name: {{ include "gitlab-runner-vmi.fullname" . }}
+  labels:
+    {{- include "gitlab-runner-vmi.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gitlab-runner-vmi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gitlab-runner-vmi.selectorLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.vm.terminationGracePeriodSeconds }}
+      domain:
+        devices:
+          disks:
+            - name: containerdisk
+              disk:
+                bus: virtio
+            - name: config
+              disk:
+                bus: virtio
+          filesystems:
+            - name: config-fs
+              virtiofs: {}
+          interfaces:
+            - name: default
+              masquerade: {}
+        resources:
+          requests:
+            cpu: {{ .Values.resources.requests.cpu }}
+            memory: {{ .Values.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.resources.limits.cpu }}
+            memory: {{ .Values.resources.limits.memory }}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: containerdisk
+          containerDisk:
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: config
+          configMap:
+            name: {{ include "gitlab-runner-vmi.fullname" . }}-config
+        # We need to clarify if we use virtiofs for 'config' or if we attached it as disk.
+        # The user said: "Utilize virtiofs to mount ConfigMaps".
+        # So we should define a filesystem.
+        - name: config-fs
+          configMap:
+            name: {{ include "gitlab-runner-vmi.fullname" . }}-config
+
+      # Mount the filesystem in the guest
+      # This requires the guest command line or fstab, OR we can rely on automount if KubeVirt supports it?
+      # Usually we need to mount it manually in the guest or use cloud-init to mount it.
+      # BUT user said "Do not use Cloud-init".
+      # So we need to bake the mount into `/etc/fstab` in the image!
+      # We need to know the tag Name.
+      # filesystems name is 'config-fs'. so the tag is 'config-fs'.
+      # Deployment note: The guest must have `config-fs /etc/gitlab-runner virtiofs defaults 0 0` in /etc/fstab.
+      # I should add this to the Ansible playbook!

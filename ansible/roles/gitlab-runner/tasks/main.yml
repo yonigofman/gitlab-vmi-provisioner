@@ -1,0 +1,32 @@
+---
+- name: Add GitLab Runner repository
+  get_url:
+    url: "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh"
+    dest: /tmp/script.rpm.sh
+    mode: "0755"
+
+- name: Run GitLab Runner install script
+  command: /tmp/script.rpm.sh
+
+- name: Install GitLab Runner
+  yum:
+    name: gitlab-runner
+    state: present
+
+- name: Add gitlab-runner user to docker group
+  user:
+    name: gitlab-runner
+    groups: docker
+    append: yes
+
+# Check if we need to disable the default service and manage it ourselves or just enable it.
+# The user wants "configuration baked in via Systemd units".
+# The default installation creates a systemd service. We might want to override it or ensure it expects the config at the right place.
+# The default config location is /etc/gitlab-runner/config.toml so we are good if we mount there.
+
+- name: Enable GitLab Runner service
+  systemd:
+    name: gitlab-runner
+    enabled: yes
+    # We don't start it during bake, as it's a template.
+    # But for the VM to start it on boot, enabled is enough.

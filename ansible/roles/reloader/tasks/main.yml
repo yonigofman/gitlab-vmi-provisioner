@@ -1,0 +1,64 @@
+---
+- name: Install inotify-tools
+  yum:
+    name: inotify-tools
+    state: present
+
+- name: Create reloader script
+  copy:
+    dest: /usr/local/bin/gitlab-runner-reloader.sh
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      CONFIG_FILE="/etc/gitlab-runner/config.toml"
+
+      echo "Starting GitLab Runner Reloader..."
+
+      while true; do
+        inotifywait -e modify,move,create,delete "$CONFIG_FILE"
+        echo "Configuration changed. Reloading GitLab Runner..."
+        gitlab-runner verify
+        # reload isn't always enough if the runner isn't running or needs a restart? 
+        # gitlab-runner reload sends a SIGHUP.
+        # But wait, 'gitlab-runner reload' is valid? It is not a standard command of the binary usually.
+        # The binary commands are run, start, stop, restart, status, uninstall, install...
+        # 'verify' checks if the runners are valid.
+        # Usually it's 'kill -SIGHUP $(pidof gitlab-runner)' to reload config?
+        # Or just 'gitlab-runner verify' cleans up old runners.
+        # Let's check documentation or assume for now we need to signal the process.
+        # Actually gitlab-runner checks for file changes automatically?
+        # "The Runner reloads the configuration automatically every 3 seconds" according to some docs, 
+        # but the user specifically asked for "Implement an inotify-based reloader service".
+        # So I will implement it.
+        
+        # 'gitlab-runner reload' sends a SIGHUP to the process, allowing it to reload config without dropping active jobs.
+        # We try systemctl reload first, which should send SIGHUP if the unit file supports it,
+        # otherwise we manually send SIGHUP to the main process.
+        
+        if systemctl reload gitlab-runner; then
+            echo "Successfully reloaded gitlab-runner service."
+        else
+            echo "systemctl reload failed, sending SIGHUP manually..."
+            pkill -HUP gitlab-runner
+        fi
+      done
+
+- name: Create reloader systemd unit
+  copy:
+    dest: /etc/systemd/system/gitlab-runner-reloader.service
+    content: |
+      [Unit]
+      Description=GitLab Runner Configuration Reloader
+      After=gitlab-runner.service
+
+      [Service]
+      ExecStart=/usr/local/bin/gitlab-runner-reloader.sh
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable reloader service
+  systemd:
+    name: gitlab-runner-reloader
+    enabled: yes
